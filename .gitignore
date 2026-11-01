@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+.env.local
+*.log
+.vite/
+
+# the assessment brief is not part of the submission
+brief.txt
+PlantNxt Full Stack Assignment.md

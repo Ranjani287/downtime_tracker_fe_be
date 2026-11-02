@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
-import { pool } from '../src/db.js';
+import { sequelize } from '../src/db.js';
+import { DowntimeEvent, DowntimeReason, Machine, ProductionLine, RevokedToken, Tenant, User } from '../src/models/index.js';
 
 const PASSWORD = 'Password123!';
 const hash = bcrypt.hashSync(PASSWORD, 10);
@@ -31,85 +32,81 @@ const reasons = [
   ['Quality hold', 'Quality'], ['Planned maintenance', 'Planned'],
 ];
 
+const MINUTE = 60_000;
+const DAY = 24 * 60 * MINUTE;
+
 // `--if-empty` (used by docker-compose) makes the seed a no-op when data already exists, so restarts keep your data.
-if (process.argv.includes('--if-empty') && (await pool.query('SELECT 1 FROM tenants LIMIT 1')).rowCount) {
+if (process.argv.includes('--if-empty') && (await Tenant.count())) {
   console.log('Database already has data, skipping seed.');
-  await pool.end();
+  await sequelize.close();
   process.exit(0);
 }
 
-const client = await pool.connect();
-try {
-  await client.query('BEGIN');
-  // Idempotent reseed: wipe and recreate demo data.
-  await client.query('TRUNCATE tenants, users, revoked_tokens RESTART IDENTITY CASCADE');
+await sequelize.transaction(async (transaction) => {
+  // Idempotent reseed: wipe and recreate demo data (CASCADE clears everything that references these tables).
+  for (const Model of [Tenant, User, RevokedToken]) await Model.truncate({ cascade: true, restartIdentity: true, transaction });
 
   // Platform super admin: belongs to no organisation (tenant_id NULL).
-  await client.query(
-    `INSERT INTO users (tenant_id, email, name, password_hash, role) VALUES (NULL, $1, 'Platform Super Admin', $2, 'super_admin')`,
-    ['superadmin@platform.com', hash]
+  await User.create(
+    { tenant_id: null, email: 'superadmin@platform.com', name: 'Platform Super Admin', role: 'super_admin', password_hash: hash },
+    { transaction },
   );
 
   for (const t of tenants) {
-    const tenantId = (await client.query('INSERT INTO tenants (name) VALUES ($1) RETURNING id', [t.name])).rows[0].id;
+    const tenant = await Tenant.create({ name: t.name }, { transaction });
+    const owned = { tenant_id: tenant.id };
 
     const users = {};
     for (const [key, role] of [['admin', 'admin'], ['operator', 'operator'], ['operator2', 'operator']]) {
-      users[key] = (await client.query(
-        'INSERT INTO users (tenant_id, email, name, password_hash, role) VALUES ($1,$2,$3,$4,$5) RETURNING id',
-        [tenantId, `${key}@${t.slug}.com`, `${t.name.split(' ')[0]} ${key}`, hash, role]
-      )).rows[0].id;
+      users[key] = await User.create(
+        { ...owned, email: `${key}@${t.slug}.com`, name: `${t.name.split(' ')[0]} ${key}`, role, password_hash: hash },
+        { transaction },
+      );
     }
 
-    const machineIds = [];
-    for (const [lineName, machines] of Object.entries(t.lines)) {
-      const lineId = (await client.query(
-        'INSERT INTO production_lines (tenant_id, name) VALUES ($1,$2) RETURNING id', [tenantId, lineName]
-      )).rows[0].id;
-      for (const m of machines) {
-        machineIds.push((await client.query(
-          'INSERT INTO machines (tenant_id, line_id, name) VALUES ($1,$2,$3) RETURNING id', [tenantId, lineId, m]
-        )).rows[0].id);
-      }
+    const machines = [];
+    for (const [lineName, machineNames] of Object.entries(t.lines)) {
+      const line = await ProductionLine.create({ ...owned, name: lineName }, { transaction });
+      for (const name of machineNames) machines.push(await Machine.create({ ...owned, line_id: line.id, name }, { transaction }));
     }
 
-    const reasonIds = [];
-    for (const [name, category] of reasons) {
-      reasonIds.push((await client.query(
-        'INSERT INTO downtime_reasons (tenant_id, name, category) VALUES ($1,$2,$3) RETURNING id', [tenantId, name, category]
-      )).rows[0].id);
-    }
+    const reasonRows = await DowntimeReason.bulkCreate(
+      reasons.map(([name, category]) => ({ ...owned, name, category })),
+      { transaction },
+    );
 
     // One closed event per machine per day for the last 14 days (never overlapping), with deterministic variation.
+    const now = Date.now();
+    const events = [];
     let n = 0;
-    for (const machineId of machineIds) {
+    for (const machine of machines) {
       for (let day = 14; day >= 1; day--) {
         n++;
-        const startMin = (n * 37) % 600;
-        const durMin = 10 + ((n * 53) % 110);
-        await client.query(
-          `INSERT INTO downtime_events (tenant_id, machine_id, reason_id, started_at, ended_at, note, created_by)
-           VALUES ($1,$2,$3,
-                   now() - make_interval(days => $5) + make_interval(mins => $6),
-                   now() - make_interval(days => $5) + make_interval(mins => $6 + $7),
-                   'Seeded event', $4)`,
-          [tenantId, machineId, reasonIds[n % reasonIds.length], n % 2 ? users.operator : users.operator2, day, startMin, durMin]
-        );
+        const start = now - day * DAY + ((n * 37) % 600) * MINUTE;
+        const durationMin = 10 + ((n * 53) % 110);
+        events.push({
+          ...owned,
+          machine_id: machine.id,
+          reason_id: reasonRows[n % reasonRows.length].id,
+          started_at: new Date(start),
+          ended_at: new Date(start + durationMin * MINUTE),
+          note: 'Seeded event',
+          created_by: (n % 2 ? users.operator : users.operator2).id,
+        });
       }
     }
     // One machine is down right now.
-    await client.query(
-      `INSERT INTO downtime_events (tenant_id, machine_id, reason_id, started_at, note, created_by)
-       VALUES ($1,$2,$3, now() - interval '25 minutes', 'Currently down', $4)`,
-      [tenantId, machineIds[2], reasonIds[3], users.operator]
-    );
+    events.push({
+      ...owned,
+      machine_id: machines[2].id,
+      reason_id: reasonRows[3].id,
+      started_at: new Date(now - 25 * MINUTE),
+      note: 'Currently down',
+      created_by: users.operator.id,
+    });
+    await DowntimeEvent.bulkCreate(events, { transaction });
   }
-  await client.query('COMMIT');
-  console.log(`Seeded ${tenants.length} tenants. All users share password: ${PASSWORD}`);
-} catch (e) {
-  await client.query('ROLLBACK');
-  throw e;
-} finally {
-  client.release();
-  await pool.end();
-}
+});
+
+console.log(`Seeded ${tenants.length} tenants. All users share password: ${PASSWORD}`);
+await sequelize.close();

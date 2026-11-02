@@ -1,10 +1,9 @@
 import { Router } from 'express';
-import bcrypt from 'bcryptjs';
 import { z } from 'zod';
-import { query } from '../db.js';
 import { authenticate, authorize, requireTenant } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
-import { HttpError, notFound, wrap } from '../utils/errors.js';
+import * as userService from '../services/userService.js';
+import { wrap } from '../utils/errors.js';
 
 // Organisation admins manage the users of their own organisation only.
 const router = Router();
@@ -26,43 +25,15 @@ const updateSchema = z.object({
 }).refine((v) => Object.keys(v).length > 0, 'Provide at least one field');
 
 router.get('/', wrap(async (req, res) => {
-  const { rows } = await query(
-    'SELECT id, name, email, role, active FROM users WHERE tenant_id = $1 ORDER BY role, name',
-    [req.user.tenant_id]
-  );
-  res.json({ data: rows });
+  res.json({ data: await userService.listUsers(req.user.tenant_id) });
 }));
 
 router.post('/', validate(createSchema), wrap(async (req, res) => {
-  const { name, email, password, role } = req.body;
-  const { rows } = await query(
-    `INSERT INTO users (tenant_id, email, name, password_hash, role)
-     VALUES ($1,$2,$3,$4,$5) RETURNING id, name, email, role, active`,
-    [req.user.tenant_id, email, name, await bcrypt.hash(password, 10), role]
-  );
-  res.status(201).json(rows[0]);
+  res.status(201).json(await userService.createUser(req.user.tenant_id, req.body));
 }));
 
 router.patch('/:id', validate(idParam, 'params'), validate(updateSchema), wrap(async (req, res) => {
-  const { name, role, active, password } = req.body;
-  // Prevent an admin from locking themselves out of their organisation.
-  if (req.params.id === req.user.id && (active === false || (role && role !== 'admin'))) {
-    throw new HttpError(400, 'You cannot deactivate or demote yourself');
-  }
-  const { rows } = await query(
-    `UPDATE users SET name = COALESCE($3, name), role = COALESCE($4, role),
-                      active = COALESCE($5, active), password_hash = COALESCE($6, password_hash)
-      WHERE id = $1 AND tenant_id = $2
-  RETURNING id, name, email, role, active`,
-    [req.params.id, req.user.tenant_id, name ?? null, role ?? null, active ?? null,
-      password ? await bcrypt.hash(password, 10) : null]
-  );
-  if (!rows[0]) throw notFound('User');
-  // Deactivation or a password reset must end the user's existing sessions.
-  if (active === false || password) {
-    await query('UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL', [rows[0].id]);
-  }
-  res.json(rows[0]);
+  res.json(await userService.updateUser(req.user, req.params.id, req.body));
 }));
 
 export default router;

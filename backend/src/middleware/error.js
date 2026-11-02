@@ -14,16 +14,20 @@ const CONSTRAINT_MESSAGES = {
   tenants_name_key: [409, 'An organisation with that name already exists'],
 };
 
-// Maps known Postgres errors to friendly HTTP errors; hides internals for the rest.
+// Sequelize wraps the driver error: the original PostgreSQL error (code, constraint) is on `.parent`.
+const pgError = (err) => err.parent ?? err.original ?? err;
+
+// Maps known database errors to friendly HTTP errors; hides internals for the rest.
 export const errorHandler = (err, _req, res, _next) => {
   let { status, message, details } = err;
 
   if (!status) {
-    const known = CONSTRAINT_MESSAGES[err.constraint];
+    const pg = pgError(err);
+    const known = CONSTRAINT_MESSAGES[pg.constraint];
     if (known) {
       [status, message] = known;
     } else {
-      switch (err.code) {
+      switch (pg.code) {
         case '23P01': // exclusion_violation
         case '23505': // unique_violation
           status = 409;

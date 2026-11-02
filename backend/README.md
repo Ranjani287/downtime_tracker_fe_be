@@ -1,6 +1,6 @@
 # PlantNxt Production Line Downtime Tracker — Backend (API)
 
-Multi-tenant REST API for logging and analysing production line downtime. **Node 20+, Express, PostgreSQL** (plain SQL via `pg`, SQL migration files, no ORM), JWT auth, Zod validation.
+Multi-tenant REST API for logging and analysing production line downtime. **Node 20+, Express, PostgreSQL**, data access through **Sequelize models** mapped onto tables that are owned by plain SQL migration files, JWT auth, Zod validation.
 
 The React app lives in [`../frontend`](../frontend) (same repository). The API also works on its own with any HTTP client. See the [root README](../README.md) for the quick start of the whole project.
 
@@ -21,7 +21,6 @@ npm run dev                   # http://localhost:4000   (npm start for productio
 | `npm run setup` | migrate + seed (the seed **wipes existing data**) |
 | `npm run migrate` / `npm run seed` | run one step |
 | `npm run db:reset` | drop the schema, migrate and seed (development only) |
-| `npm test` | 19 integration tests against the seeded database |
 
 **Docker (optional):** `docker compose up --build` starts PostgreSQL and the API (migrations and seed run automatically on first start). *Note: I wrote this without Docker installed on my laptop, so it is untested.*
 
@@ -69,6 +68,32 @@ Each tenant has 3 lines, 6 machines, 6 downtime reasons and 85 events over the l
 | Create/suspend tenants, create their first admin | ❌ | ❌ | ✅ |
 
 `super_admin` is an addition to the brief (platform operator who onboards tenants). It belongs to no tenant and cannot touch any tenant's data.
+
+## Code structure and data access
+
+```
+src/
+  db.js               the Sequelize connection (DB_LOG=1 prints every SQL statement)
+  models/             one file per table: Tenant, User, ProductionLine, Machine, DowntimeReason,
+                      DowntimeEvent, RefreshToken, RevokedToken; index.js declares the associations
+  services/           business rules + model calls, one file per area: authService, lineService, machineService,
+                      reasonService, downtimeService, reportService, userService, organisationService
+  serializers.js      model -> JSON response shapes (and the reusable `include` trees)
+  utils/tenant.js     inTenant() / findOwned(): the tenant filter every query goes through
+  routes/             thin Express handlers, HTTP only: Zod validation + role guards -> call a service -> send JSON
+  middleware/         auth (JWT, roles), validation, error mapping
+db/migrations/        the schema: plain SQL, applied by scripts/migrate.js
+```
+
+**Layering: routes → services → models → PostgreSQL.** A route reads the request, validates it with Zod, checks the role and calls one service function; it never imports a model. A service owns the business rules (for example "a machine can't have two open events", "an admin can't deactivate themselves", token rotation and reuse detection) and talks to the models; it knows nothing about `req`/`res` (cookies stay in the auth route). Services return ready-to-send DTOs and throw `HttpError`s that the central error handler turns into responses. This keeps handlers trivial, and a service function can be called from a test or a script without HTTP.
+
+**Models map, migrations own the schema.** The models describe existing tables and relations (`Machine.belongsTo(ProductionLine)`, `DowntimeEvent.belongsTo(Machine)`, ...), but `sequelize.sync()` is never called: tables, composite foreign keys, the exclusion constraint and the partial unique index all come from the SQL migrations. Neither routes nor services contain SQL strings; services use model calls such as `Machine.findAll({ where: inTenant(tenantId), include: [...] })`.
+
+- **Tenant isolation in the data layer:** every tenant-owned query builds its `where` with `inTenant(req.user.tenant_id, ...)`, and `findOwned()` turns "not in my tenant" into a 404.
+- **Secrets stay out of responses:** `User` has a default scope that excludes `password_hash`; only login opts in with `User.unscoped()`. Routes return DTOs from `serializers.js`, never raw model instances.
+- **Aggregates still run in SQL:** the summary uses `COUNT`/`SUM`/`AVG` with joins and `GROUP BY` expressed through the models ([`reports.js`](src/routes/reports.js)). Run the API with `DB_LOG=1` to see the generated statements.
+- **Derived values** such as an event's `duration_minutes` are model getters; `is_down` comes from an association scoped to `ended_at IS NULL`.
+- The only raw SQL left is in the migration/reset/seed scripts (running the `.sql` files, dropping the schema, `TRUNCATE`).
 
 ## Database schema
 
@@ -159,7 +184,7 @@ Validation: ids must be positive integers; `note` ≤ 1000 chars; `ended_at` aft
   "by_reason":[{ "reason_id": 3, "reason_name": "Changeover", "category": "Changeover", "events": 9, "total_minutes": 610 }] }
 ```
 
-Computed entirely in SQL ([`src/routes/reports.js`](src/routes/reports.js)): one CTE selects the tenant's events overlapping the range and clips each duration to the range (`LEAST(ended_at, to) - GREATEST(started_at, from)`; open events run until now), then `JOIN`s `machines → production_lines` (or `downtime_reasons`) and `GROUP BY` with `SUM`. An event that started before the range only contributes the minutes inside it. A test checks these numbers exactly.
+Computed entirely in SQL ([`src/routes/reports.js`](src/routes/reports.js)), built with Sequelize aggregates: each query selects the tenant's events overlapping the range and clips each duration to the range (`LEAST(ended_at, to) - GREATEST(started_at, from)`; open events run until now), then `INNER JOIN`s `machines → production_lines` (or `downtime_reasons`) and uses `GROUP BY` with `SUM`/`COUNT`. An event that started before the range only contributes the minutes inside it.
 
 ### Users and platform
 
@@ -176,8 +201,7 @@ Computed entirely in SQL ([`src/routes/reports.js`](src/routes/reports.js)): one
 1. **The tenant never comes from the request.** After the JWT is verified, the user (and their tenant) is re-loaded from the database on every request; `req.user.tenant_id` is the only tenant any query uses.
 2. **Every query is scoped:** `WHERE tenant_id = $1` on reads and writes, including `UPDATE`/`DELETE` by id, so a guessed id from another tenant matches no row and returns **404** (no information leak about whether it exists). Ids in request bodies (machine, reason, line) are checked against the tenant and return 400 if foreign.
 3. **The database backs it up:** composite foreign keys make cross-tenant references impossible even if a query forgot its filter.
-4. **Tests** exercise all of this: lists never mix tenants, and an Acme admin attempting GET/PUT/DELETE/close on Globex records, or referencing Globex machines/reasons/lines, reads and changes nothing.
-5. The super admin has no tenant, so a `requireTenant` guard blocks it from every tenant-data route.
+4. The super admin has no tenant, so a `requireTenant` guard blocks it from every tenant-data route.
 
 ## Authentication details
 
@@ -190,12 +214,12 @@ Computed entirely in SQL ([`src/routes/reports.js`](src/routes/reports.js)): one
 ## Design decisions and assumptions
 
 - **Shared schema, `tenant_id` on every table** (simplest to operate for a small SaaS; discussed above). Row-level security would be the next hardening step.
-- **Constraints in Postgres, friendly messages in the API:** the explicit "machine already has an open event" check gives a clear error, while the partial unique index and exclusion constraint are the real guarantee under concurrency (a test fires 5 simultaneous starts and exactly one succeeds). Constraint names are mapped to messages in [`src/middleware/error.js`](src/middleware/error.js).
+- **Constraints in Postgres, friendly messages in the API:** the explicit "machine already has an open event" check gives a clear error, while the partial unique index and exclusion constraint are the real guarantee under concurrency. Constraint names are mapped to messages in [`src/middleware/error.js`](src/middleware/error.js).
 - **Date ranges mean "overlaps the range"** in both the list filter and the summary, so an event spanning midnight appears on both days.
 - **Deactivate vs delete:** lines, machines and reasons with history cannot be deleted (foreign keys → 409); deactivating hides them from new events but keeps history and reports.
 - **Reason `category`** is free text (the brief's examples mix names and categories), e.g. Breakdown, Changeover, Material.
 - **Operators may read lines/machines/reasons** because the start-event form needs them; "Admin only" is applied to changing them. Admins may also log and close events.
-- **Layering:** routes → Zod validation middleware → parameterized SQL. No ORM; the schema is explicit in SQL migrations.
+- **Layering:** routes (HTTP + validation) → services (business rules) → Sequelize models → PostgreSQL. The ORM only maps; it never creates or changes tables (the brief forbids auto-created schemas), so the schema stays explicit and reviewable in SQL migrations. Sequelize parameterizes all values (the few `sequelize.escape`d dates in the summary are already Zod-validated).
 - **Pagination** is `LIMIT/OFFSET` (simple, supports "page N of M"); `limit` is capped at 100.
 
 ### If a query gets slow
@@ -207,7 +231,7 @@ Find the statement with `pg_stat_statements` or slow-query logs, then `EXPLAIN (
 - Row-level security as a second isolation layer; keyset pagination; CSV export of the event list.
 - A `closed_by` column and an audit trail for edits/deletes; soft delete for events.
 - Machine-level dashboards (Pareto chart, MTBF/MTTR per machine) and shifts/plant (site) entities between tenant and line.
-- Tests for the summary on large generated data sets and load tests on the list endpoint.
+- Automated API integration tests (auth and token rotation, tenant isolation, the one-open-event rule under concurrent requests, the summary maths) and load tests on the list endpoint.
 - Password reset by email, tenant self sign-up, and per-user login throttling in addition to per-IP.
 - OpenAPI/Swagger documentation generated from the Zod schemas.
 
@@ -223,5 +247,5 @@ Tablet-friendly one-tap "machine stopped" with a short list of frequent reasons;
 ## Known limitations
 
 - No tenant self sign-up and no "forgot password" email flow (admins reset passwords).
-- Each `npm test` run cleans up the data it creates; the seed data is left untouched.
+- No automated tests are included; the behaviour above was checked manually against the seeded data.
 - Docker files are untested (see above).

@@ -62,6 +62,18 @@ All passwords: `Password123!` (the login page has one-click buttons).
 | Migrations with foreign keys and indexes; no auto-created schema | `backend/db/migrations/*.sql`; models in `backend/src/models` only map (no `sync()`) |
 | Bonus: docker-compose, shop-floor ideas | `backend/docker-compose.yml` (untested), "Ideas for a real shop floor" in the backend README |
 
+## Deployment (free tiers)
+
+The browser should see **one origin**: the frontend host forwards `/api/*` to the API, so the `SameSite=Strict` refresh cookie works and CORS is not involved. Three pieces: **Neon** (PostgreSQL), **Render** (API), **Vercel** (frontend). *These steps and files were written from each provider's documentation and have not been run by the author; the dashboards may differ slightly.*
+
+1. **Database (Neon):** create a project and copy the connection string. The schema needs the `btree_gist` extension, which Neon allows.
+2. **API (Render):** New → Blueprint → select this repo (it reads [`render.yaml`](render.yaml)). When asked, paste `DATABASE_URL` (the Neon string) and `CORS_ORIGIN` (you can use a placeholder now and edit it after step 3). `JWT_SECRET` is generated for you. On first start it runs the migrations and seeds the demo data. Check `https://<api>.onrender.com/api/health`.
+3. **Frontend (Vercel):** import the repo, set **Root Directory** to `frontend` (framework: Vite). Before deploying, edit [`frontend/vercel.json`](frontend/vercel.json) and replace `REPLACE-WITH-YOUR-RENDER-URL` with the API host from step 2. Leave `VITE_API_URL` unset.
+4. Set the API's `CORS_ORIGIN` to the Vercel URL and redeploy it.
+5. **Check:** open the Vercel URL, sign in as `admin@acme.com`, confirm a `refresh_token` cookie flagged *HttpOnly* and *Secure*, reload the page and stay signed in.
+
+Notes: free Render instances sleep when idle, so the first request after a pause can take 30 to 60 seconds. `TRUST_PROXY=2` (Vercel + Render) makes the login rate limit see real client IPs; if you remove one of the proxies, change it. The seeded accounts share the password `Password123!`: change them, or remove the super admin seed, if the URL will be public for long.
+
 ## Main design decisions (details in the sub-READMEs)
 
 - Shared schema with `tenant_id` everywhere; composite foreign keys make cross-tenant references impossible at the database level.

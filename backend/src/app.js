@@ -14,6 +14,7 @@ import platformRoutes from './routes/platform.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 
 export const app = express();
+app.set('trust proxy', config.trustProxy);
 
 app.use(helmet());
 app.use(cors({ origin: config.corsOrigin, credentials: true }));

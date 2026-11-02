@@ -5,6 +5,7 @@ import { config } from './config.js';
 // the models only MAP onto existing tables, and `sequelize.sync()` is never called.
 export const sequelize = new Sequelize(config.databaseUrl, {
   dialect: 'postgres',
+  ...(config.databaseSsl && { dialectOptions: { ssl: { require: true, rejectUnauthorized: false } } }),
   logging: process.env.DB_LOG ? (sql) => console.log(sql) : false, // DB_LOG=1 prints every SQL statement
   define: {
     freezeTableName: true, // model names are singular, tables are explicit

@@ -1,0 +1,28 @@
+# Render Blueprint for the API (Render dashboard -> New -> Blueprint -> pick this repo).
+# NOTE: written from Render's documented schema but not run by the author; check the values it shows you.
+# The database is NOT created here: use any managed Postgres (e.g. Neon) and paste its URL when asked.
+services:
+  - type: web
+    name: downtime-tracker-api
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install
+    # creates/updates the tables, seeds demo data only when the database is empty, then starts the API
+    startCommand: npm run migrate && node scripts/seed.js --if-empty && npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: COOKIE_SAMESITE
+        value: strict            # the frontend host proxies /api, so browser and API look same-site
+      - key: DATABASE_SSL
+        value: "true"
+      - key: TRUST_PROXY
+        value: "2"               # frontend host (Vercel) + Render's own proxy
+      - key: JWT_SECRET
+        generateValue: true      # Render generates a long random value
+      - key: DATABASE_URL
+        sync: false              # you paste the Neon connection string in the dashboard
+      - key: CORS_ORIGIN
+        sync: false              # your frontend URL, e.g. https://downtime-tracker.vercel.app

@@ -23,6 +23,8 @@ services:
       - key: JWT_SECRET
         generateValue: true      # Render generates a long random value
       - key: DATABASE_URL
-        sync: false              # you paste the Neon connection string in the dashboard
+        sync: false              # Neon POOLED connection string (host contains -pooler): used by the running API
+      - key: DATABASE_URL_UNPOOLED
+        sync: false              # Neon DIRECT connection string: used by `npm run migrate` at startup
       - key: CORS_ORIGIN
         sync: false              # your frontend URL, e.g. https://downtime-tracker.vercel.app

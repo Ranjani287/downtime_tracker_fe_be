@@ -28,7 +28,8 @@ npm run dev                   # http://localhost:4000   (npm start for productio
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `DATABASE_URL` | required | Postgres connection string |
+| `DATABASE_URL` | required | Postgres connection string (with Neon: the **pooled** one) |
+| `DATABASE_URL_UNPOOLED` | none | Neon's direct connection; migrations and seeding use it when present |
 | `JWT_SECRET` | required | Signs access tokens |
 | `PORT` | 4000 | HTTP port |
 | `JWT_EXPIRES_IN` | 15m | Access token lifetime |
@@ -36,6 +37,24 @@ npm run dev                   # http://localhost:4000   (npm start for productio
 | `CORS_ORIGIN` | http://localhost:5173 | Exact frontend origin allowed (with credentials) |
 | `COOKIE_SAMESITE` | strict | `strict` if frontend and API share a site; `none` if on different sites (HTTPS required) |
 | `NODE_ENV` | – | `production` makes cookies `Secure` |
+
+## Using Neon (hosted PostgreSQL)
+
+The app runs unchanged on Neon (it is plain PostgreSQL with the `btree_gist` extension). `neon.ts` at the repository root declares the project; `neon deploy` links it and writes `.env.local` at the repository root with:
+
+- `DATABASE_URL`: the **pooled** connection (host contains `-pooler`). The running API uses this one, as Neon recommends for application traffic.
+- `DATABASE_URL_UNPOOLED`: the **direct** connection. `npm run migrate` and the seed script use it when it is present (Neon's guidance for schema changes), via `scripts/useDirectConnection.js`.
+
+The backend loads `../.env.local` automatically and it takes precedence over `backend/.env`, so with that file present the app talks to Neon; delete or rename it to return to the local database. TLS is enabled automatically for `sslmode=require` URLs, with certificate verification on. The API prints the database host (never credentials) at startup so you can see which database it is using.
+
+```bash
+cd backend
+npm run migrate                    # creates the tables on Neon (direct connection); safe to re-run
+node scripts/seed.js --if-empty    # optional demo data, only if the database is empty
+npm start
+```
+
+**Safety:** `npm run db:reset` (drops the schema) and a plain `npm run seed` (truncates tenants/users) refuse to run against a non-local database unless you set `ALLOW_REMOTE_RESET=true`. `seed.js --if-empty` is always allowed because it never wipes anything.
 
 ## Seeded logins
 

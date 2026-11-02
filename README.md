@@ -66,8 +66,8 @@ All passwords: `Password123!` (the login page has one-click buttons).
 
 The browser should see **one origin**: the frontend host forwards `/api/*` to the API, so the `SameSite=Strict` refresh cookie works and CORS is not involved. Three pieces: **Neon** (PostgreSQL), **Render** (API), **Vercel** (frontend). *These steps and files were written from each provider's documentation and have not been run by the author; the dashboards may differ slightly.*
 
-1. **Database (Neon):** create a project and copy the connection string. The schema needs the `btree_gist` extension, which Neon allows.
-2. **API (Render):** New → Blueprint → select this repo (it reads [`render.yaml`](render.yaml)). When asked, paste `DATABASE_URL` (the Neon string) and `CORS_ORIGIN` (you can use a placeholder now and edit it after step 3). `JWT_SECRET` is generated for you. On first start it runs the migrations and seeds the demo data. Check `https://<api>.onrender.com/api/health`.
+1. **Database (Neon):** create a project (or run `neon init` / `neon deploy`, see the backend README). You need two connection strings: the **pooled** one (`DATABASE_URL`, host contains `-pooler`) and the **direct** one (`DATABASE_URL_UNPOOLED`). The schema needs the `btree_gist` extension, which Neon allows.
+2. **API (Render):** New → Blueprint → select this repo (it reads [`render.yaml`](render.yaml)). When asked, paste `DATABASE_URL` (pooled), `DATABASE_URL_UNPOOLED` (direct) and `CORS_ORIGIN` (you can use a placeholder now and edit it after step 3). `JWT_SECRET` is generated for you. On first start it runs the migrations and seeds the demo data. Check `https://<api>.onrender.com/api/health`.
 3. **Frontend (Vercel):** import the repo, set **Root Directory** to `frontend` (framework: Vite). Before deploying, edit [`frontend/vercel.json`](frontend/vercel.json) and replace `REPLACE-WITH-YOUR-RENDER-URL` with the API host from step 2. Leave `VITE_API_URL` unset.
 4. Set the API's `CORS_ORIGIN` to the Vercel URL and redeploy it.
 5. **Check:** open the Vercel URL, sign in as `admin@acme.com`, confirm a `refresh_token` cookie flagged *HttpOnly* and *Secure*, reload the page and stay signed in.

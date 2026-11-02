@@ -1,4 +1,6 @@
 import bcrypt from 'bcryptjs';
+import './useDirectConnection.js'; // must stay the first import
+import { databaseHost, isLocalDatabase } from '../src/config.js';
 import { sequelize } from '../src/db.js';
 import { DowntimeEvent, DowntimeReason, Machine, ProductionLine, RevokedToken, Tenant, User } from '../src/models/index.js';
 
@@ -36,10 +38,17 @@ const MINUTE = 60_000;
 const DAY = 24 * 60 * MINUTE;
 
 // `--if-empty` (used by docker-compose) makes the seed a no-op when data already exists, so restarts keep your data.
-if (process.argv.includes('--if-empty') && (await Tenant.count())) {
+const ifEmpty = process.argv.includes('--if-empty');
+if (ifEmpty && (await Tenant.count())) {
   console.log('Database already has data, skipping seed.');
   await sequelize.close();
   process.exit(0);
+}
+
+// A full reseed truncates tenants/users, so never do it to a remote database by accident.
+// (With --if-empty we only get here when the database is empty, so there is nothing to wipe.)
+if (!ifEmpty && !isLocalDatabase && process.env.ALLOW_REMOTE_RESET !== 'true') {
+  throw new Error(`Refusing to wipe and reseed a remote database (${databaseHost}). Use --if-empty to seed only an empty database, or set ALLOW_REMOTE_RESET=true.`);
 }
 
 await sequelize.transaction(async (transaction) => {

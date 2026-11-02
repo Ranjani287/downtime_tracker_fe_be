@@ -3,6 +3,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import './useDirectConnection.js'; // must stay the first import: migrations use Neon's direct (non-pooled) URL
 import { sequelize } from '../src/db.js';
 
 const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'db', 'migrations');

@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import './env.js'; // loads repo-root .env.local (Neon) and backend/.env
 
 export const config = {
   port: Number(process.env.PORT) || 4000,
@@ -11,8 +11,11 @@ export const config = {
   // How many reverse proxies sit in front of the API (hosting platform, CDN rewrite...). Express then reads the real
   // client IP from X-Forwarded-For, which the login rate limit needs. 0 locally; 1 by default in production.
   trustProxy: process.env.TRUST_PROXY !== undefined ? Number(process.env.TRUST_PROXY) : (process.env.NODE_ENV === 'production' ? 1 : 0),
-  // Managed Postgres (Neon, Supabase, Render...) normally requires TLS.
-  databaseSsl: process.env.DATABASE_SSL === 'true',
+  // TLS to the database: on for Neon / any URL with sslmode=require|verify-*, or DATABASE_SSL=true.
+  // DATABASE_SSL=no-verify keeps TLS but skips certificate verification (self-signed certificates only).
+  databaseSsl: process.env.DATABASE_SSL === 'true' || process.env.DATABASE_SSL === 'no-verify'
+    || /sslmode=(require|verify-ca|verify-full)/.test(process.env.DATABASE_URL ?? ''),
+  databaseSslVerify: process.env.DATABASE_SSL !== 'no-verify',
   // 'strict' when the SPA and API share a site (same domain / reverse proxy / dev proxy).
   // 'none' when they are hosted on different sites (requires HTTPS; cookie is then always Secure).
   cookieSameSite: (process.env.COOKIE_SAMESITE || 'strict').toLowerCase(),
@@ -25,3 +28,7 @@ if (!['strict', 'lax', 'none'].includes(config.cookieSameSite)) {
 for (const key of ['databaseUrl', 'jwtSecret']) {
   if (!config[key]) throw new Error(`Missing required env var for config.${key} (see .env.example)`);
 }
+
+// Used to stop destructive maintenance scripts (reset / wiping seed) from hitting a remote database by accident.
+export const databaseHost = (() => { try { return new URL(config.databaseUrl).hostname; } catch { return ''; } })();
+export const isLocalDatabase = ['localhost', '127.0.0.1', '::1', '[::1]', ''].includes(databaseHost);

@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "@neon/config": "^1.10.0"
+  },
+  "scripts": {
+    "build": "npm --prefix frontend run build"
+  }
+}

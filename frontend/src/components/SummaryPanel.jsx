@@ -25,7 +25,7 @@ export default function SummaryPanel({ title, rows, labelKey }) {
               <XAxis dataKey="name" interval={0} angle={-20} textAnchor="end" height={70} fontSize={12} />
               <YAxis fontSize={12} unit="m" />
               <Tooltip formatter={(v) => [fmtMinutes(v), 'Downtime']} />
-              <Bar dataKey="minutes" fill="#2563eb" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="minutes" fill="#7c3aed" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
           <DataTable columns={columns} rows={rows} rowKey={labelKey} />

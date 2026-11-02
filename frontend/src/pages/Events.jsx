@@ -42,11 +42,11 @@ export default function Events() {
 
   const columns = [
     { key: 'machine', header: 'Machine', render: (e) => <><strong>{e.machine_name}</strong><div className="muted small">{e.line_name}</div></> },
-    { key: 'reason', header: 'Reason', render: (e) => <>{e.reason_name} <Badge>{e.reason_category}</Badge></> },
+    { key: 'reason', header: 'Reason', className: 'wrap', render: (e) => <>{e.reason_name} <Badge>{e.reason_category}</Badge></> },
     { key: 'started_at', header: 'Started', render: (e) => fmtDateTime(e.started_at) },
     { key: 'ended_at', header: 'Ended', render: (e) => (e.ended_at ? fmtDateTime(e.ended_at) : <Badge tone="red">Open</Badge>) },
     { key: 'duration', header: 'Duration', render: (e) => fmtMinutes(e.duration_minutes) },
-    { key: 'created_by_name', header: 'Logged by' },
+    { key: 'created_by_name', header: 'Logged by', className: 'wrap' },
     { key: 'note', header: 'Note', className: 'wrap' },
     {
       key: 'actions', header: '', className: 'actions',

@@ -1,6 +1,7 @@
 const pad = (n) => String(n).padStart(2, '0');
 
-export const fmtDateTime = (iso) => (iso ? new Date(iso).toLocaleString() : '—');
+export const fmtDateTime = (iso) =>
+  (iso ? new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '—');
 
 export function fmtMinutes(minutes) {
   if (minutes == null) return '—';

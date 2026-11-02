@@ -21,7 +21,7 @@ export default function Dashboard() {
 
   return (
     <>
-      <div className="row wrap">
+      <div className="page-head">
         <h2>Downtime dashboard</h2>
         <span className="spacer" />
         <DateRangePicker from={range.from} to={range.to} onChange={setRange} presets />

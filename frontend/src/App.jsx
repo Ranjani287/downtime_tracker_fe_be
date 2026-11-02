@@ -1,6 +1,7 @@
 import { Navigate, NavLink, Outlet, Route, Routes } from 'react-router-dom';
 import { useAuth } from './auth.jsx';
 import { Spinner } from './components/DataState.jsx';
+import ThemeToggle from './components/ThemeToggle.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Events from './pages/Events.jsx';
 import Login from './pages/Login.jsx';
@@ -38,6 +39,7 @@ function Layout() {
         </nav>
         <span className="spacer" />
         <span className="muted small">{user.tenant_name || 'Platform'} · {user.name} ({user.role.replace('_', ' ')})</span>
+        <ThemeToggle />
         <button className="btn secondary" onClick={logout}>Log out</button>
       </header>
       <main className="container"><Outlet /></main>

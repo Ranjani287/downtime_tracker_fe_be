@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../auth.jsx';
 import { ErrorMessage } from '../components/DataState.jsx';
 import { Field } from '../components/Field.jsx';
+import ThemeToggle from '../components/ThemeToggle.jsx';
 import { useMutation } from '../hooks/useMutation.js';
 
 const DEMO_PASSWORD = 'Password123!';
@@ -23,6 +24,7 @@ export default function Login() {
 
   return (
     <div className="login-wrap">
+      <div className="login-theme"><ThemeToggle /></div>
       <form className="card login stack" onSubmit={submit}>
         <h1>Downtime Tracker</h1>
         <Field label="Email"><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus /></Field>

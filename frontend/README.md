@@ -34,6 +34,12 @@ Password for all: `Password123!`. The login page has one-click buttons for these
 | operator@acme.com, operator@globex.com | operator | **Only the Downtime events list** (start/close events) |
 | superadmin@platform.com | super_admin | Organisations (create tenants and their first admin) |
 
+## Theme
+
+A **Light / Dark toggle** is in the top bar (and on the login page). The choice is saved in the browser (`localStorage`) and, until you choose, follows the operating-system setting; an inline script in `index.html` applies it before first paint so there is no flash. All colours are CSS variables in `src/styles.css`, including the charts, so both themes are fully styled. The accent colour is **violet**; to rebrand (for example to orange) change the `--primary`, `--primary-hover`, `--primary-soft`, `--accent-text` and `--chart` variables in the two theme blocks at the top of that file.
+
+Forms use fixed control heights and top alignment, so hint text under a field (such as "Min. 8 characters") never shifts neighbouring fields or buttons out of line.
+
 ## Screens
 
 | Route | Roles | What it does |
@@ -55,6 +61,7 @@ Every data screen has **loading, empty and error states** (with a Retry button f
 src/
   api.js                  fetch wrapper: in-memory access token, refresh-and-retry on 401, single-flight refresh
   auth.jsx                AuthProvider / useAuth (session restore, login, logout, hasRole)
+  theme.jsx               ThemeProvider / useTheme (light/dark, saved in localStorage)
   App.jsx                 routes, role guards, role-based navigation
   hooks/
     useAsync.js           load data: { data, loading, error, reload }; ignores stale responses
@@ -62,7 +69,7 @@ src/
     useLookups.js         lines + machines + reasons for forms and filters
   components/
     DataState.jsx         Spinner / ErrorMessage / EmptyState / <DataState> used by every screen
-    DataTable.jsx, Pagination.jsx, Modal.jsx, Badge.jsx, Field.jsx (Field + grouped Select)
+    DataTable.jsx, Pagination.jsx, Modal.jsx, Badge.jsx, Field.jsx (Field + grouped Select), ThemeToggle.jsx
     DateRangePicker.jsx   shared by the event filters and the dashboard
     EntityForm.jsx        form generated from a field list
     CrudSection.jsx       list + create + edit dialog + (de)activate + delete for one REST resource

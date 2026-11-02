@@ -1,6 +1,6 @@
 # PlantNxt Production Line Downtime Tracker — Frontend
 
-React single-page app for the multi-tenant Production Line Downtime Tracker. **React 19 (Vite), React Router, Recharts**, plain JavaScript. It talks to the REST API in [`../backend`](../backend), which must be running (its README also holds the database setup, schema, API documentation and seeded logins).
+React single-page app for the multi-tenant Production Line Downtime Tracker. **React 19 (Vite), React Router, Axios, Recharts**, plain JavaScript. It talks to the REST API in [`../backend`](../backend), which must be running (its README also holds the database setup, schema, API documentation and seeded logins).
 
 ## Install and run
 
@@ -59,7 +59,8 @@ Every data screen has **loading, empty and error states** (with a Retry button f
 
 ```
 src/
-  api.js                  fetch wrapper: in-memory access token, refresh-and-retry on 401, single-flight refresh
+  api.js                  Axios instance + interceptors: attaches the in-memory access token, refresh-and-retry on 401,
+                          single-flight refresh, errors normalised to one ApiError type
   auth.jsx                AuthProvider / useAuth (session restore, login, logout, hasRole)
   theme.jsx               ThemeProvider / useTheme (light/dark, saved in localStorage)
   App.jsx                 routes, role guards, role-based navigation
@@ -85,8 +86,8 @@ src/
 - The short-lived **access token is kept in memory only**, never in `localStorage`/`sessionStorage`.
 - The long-lived **refresh token is an httpOnly cookie** that JavaScript cannot read; the browser sends it to `/api/auth/*`.
 - **On page load** the app calls `POST /auth/refresh` to restore the session from the cookie.
-- **On a `401`** the API wrapper refreshes once and replays the request. Concurrent 401s share one refresh call (refresh tokens rotate, so parallel refreshes would race). If refreshing fails, state is cleared and the user is sent to the login page. A `409` from refresh (another tab rotated the token a moment earlier) is retried once.
-- Requests carry `X-Requested-With: XMLHttpRequest` (required by the API on cookie endpoints as CSRF defence) and `credentials: 'include'`.
+- **On a `401`** an Axios response interceptor refreshes once and replays the request. Concurrent 401s share one refresh call (refresh tokens rotate, so parallel refreshes would race). If refreshing fails, state is cleared and the user is sent to the login page. A `409` from refresh (another tab rotated the token a moment earlier) is retried once.
+- Requests carry `X-Requested-With: XMLHttpRequest` (required by the API on cookie endpoints as CSRF defence) and `withCredentials: true` (Axios's name for sending the cookie).
 - **Logout** calls `POST /auth/logout` (revokes the session server-side), then clears local state.
 
 ## Assumptions

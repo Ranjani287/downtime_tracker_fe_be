@@ -9,11 +9,14 @@ import Modal from './Modal.jsx';
 /** Closes an open event: the operator confirms (or adjusts) the time the machine came back up. */
 export default function CloseEventModal({ event, onClose, onClosed }) {
   const [endedAt, setEndedAt] = useState(toLocalInput());
+  const [edited, setEdited] = useState(false);
   const [note, setNote] = useState(event.note ?? '');
 
+  // The picker only has minute precision, so its default ("now" rounded down) can be earlier than an event that
+  // started a few seconds ago. Unless the user picks a time themselves, send none and let the server use the exact now.
   const close = useMutation(() => api(`/downtime/${event.id}/close`, {
     method: 'PATCH',
-    body: { ended_at: localInputToIso(endedAt), note: note.trim() || undefined },
+    body: { ended_at: edited ? localInputToIso(endedAt) : undefined, note: note.trim() || undefined },
   }));
 
   const submit = async (e) => {
@@ -27,7 +30,7 @@ export default function CloseEventModal({ event, onClose, onClosed }) {
       <form className="stack" onSubmit={submit}>
         <Field label="Machine running again at">
           <input
-            type="datetime-local" required value={endedAt} onChange={(e) => setEndedAt(e.target.value)}
+            type="datetime-local" required value={endedAt} onChange={(e) => { setEndedAt(e.target.value); setEdited(true); }}
             min={toLocalInput(new Date(event.started_at))} max={toLocalInput()}
           />
         </Field>

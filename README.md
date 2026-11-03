@@ -28,7 +28,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173. The dev server proxies `/api` to the backend. An optional `docker-compose.yml` for the database and API is in `backend/` (untested, see its README).
+Open http://localhost:5173. The dev server proxies `/api` to the backend.
 
 ## Seeded logins
 
@@ -60,7 +60,7 @@ All passwords: `Password123!` (the login page has one-click buttons).
 | Login page, protected routes, role-based screens | `frontend/src/App.jsx` |
 | Loading, empty and error states; reusable components and hooks | `frontend/src/hooks`, `frontend/src/components` (`DataState`, `CrudSection`, …) |
 | Migrations with foreign keys and indexes; no auto-created schema | `backend/db/migrations/*.sql`; models in `backend/src/models` only map (no `sync()`) |
-| Bonus: docker-compose, shop-floor ideas | `backend/docker-compose.yml` (untested), "Ideas for a real shop floor" in the backend README |
+| Bonus: ideas for a real shop floor | "Ideas for a real shop floor" in the backend README |
 
 ## Deployment (free tiers)
 
@@ -80,7 +80,3 @@ Notes: free Render instances sleep when idle, so the first request after a pause
 - Business rules live in Postgres constraints (one open event per machine, no overlaps, valid times) with friendly API error messages on top.
 - Short-lived in-memory access token + rotating httpOnly refresh cookie with reuse detection; logout revokes the session server-side.
 - Layered backend (routes → services → Sequelize models); the models map onto tables owned by plain SQL migrations (no auto-sync, as the brief requires). A `super_admin` role (beyond the brief) onboards tenants.
-
-## What I would improve with another day
-
-Row-level security as a second isolation layer, keyset pagination, an audit trail and soft deletes, per-machine dashboards (Pareto, MTTR/MTBF), automated tests (API integration tests; React Testing Library + Playwright for the UI), OpenAPI docs, and filters kept in the URL. See the sub-READMEs for the full lists.

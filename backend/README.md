@@ -22,8 +22,6 @@ npm run dev                   # http://localhost:4000   (npm start for productio
 | `npm run migrate` / `npm run seed` | run one step |
 | `npm run db:reset` | drop the schema, migrate and seed (development only) |
 
-**Docker (optional):** `docker compose up --build` starts PostgreSQL and the API (migrations and seed run automatically on first start). *Note: I wrote this without Docker installed on my laptop, so it is untested.*
-
 ### Environment variables
 
 | Variable | Default | Purpose |
@@ -267,4 +265,3 @@ Tablet-friendly one-tap "machine stopped" with a short list of frequent reasons;
 
 - No tenant self sign-up and no "forgot password" email flow (admins reset passwords).
 - No automated tests are included; the behaviour above was checked manually against the seeded data.
-- Docker files are untested (see above).
